@@ -1,19 +1,14 @@
 {
-    "Lua.workspace.maxPreload": 1000000,
-    "Lua.workspace.preloadFileSize": 500000000000,
     "Lua.workspace.library": [
         //"C:\\Users\\knife\\Downloads\\Moose(2).lua",
         "C:\\Users\\knife\\Desktop\\LUA-addons",
         "C:\\Users\\knife\\Desktop\\LUA-addons\\Moose_Include-2.9.14"
     ],
-    "Lua.workspace.userThirdParty": [
-        "C:\\Users\\knife\\Desktop\\LUA-addons"
-    ],
     "Lua.diagnostics.globals": [
         "trigger",
         "mist",
         "MOOSE",
-        "lfs", // <-- WŁĄCZENIE BIBLIOTEKI FILE SYSTEM UŻYWANEJ PRZEZ MOOSE
+        "lfs",
         "env"
     ],
 }
