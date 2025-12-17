@@ -1,3 +1,5 @@
+BASE:TraceAll(true)
+
 --[[                                                
                                                    
 ▄▄▄▄▄  ▄▄▄  ▄▄  ▄▄ ▄▄▄▄▄  ▄▄▄▄   ▄▄    ▄▄ ▄▄  ▄▄▄  
@@ -5,7 +7,10 @@
 ▄██▄▄ ▀███▀ ██ ▀██ ██▄▄▄ ▄▄██▀ ▄ ██▄▄▄ ▀███▀ ██▀██ 
                                                    
 --]]
-BASE:TraceAll(true)
+
+-------------------------------------------------
+-- Zones.lua variables
+-------------------------------------------------
 
 Infantry_template = GROUP:FindByName("infantry_template")
 Tank_templatet72 = GROUP:FindByName("tank_templatet72")
@@ -18,6 +23,12 @@ Capture_r_infantry = GROUP:FindByName("capture_r_infantry")
 Opszones = { Reneopszone, Beirutopszone, Basselopszone, Hatayopszone }
 Friendlyzones = {}
 
+-------------------------------------------------
+-- Zones.lua functions
+-------------------------------------------------
+
+
+-- Get all friendly zones
 function GetFriendlyZones(zones)
     local friendlyzones = {}
     for _, Opszones in ipairs(zones) do
@@ -34,16 +45,19 @@ function GetFriendlyZones(zones)
     return friendlyzones
 end
 
+
+-- Convert meters to nautical miles
 function CalculateMetersToNM(meters)
     local nm = meters / 1852
     return nm
 end
 
+
+-- Get closest friendly zones within 50 NM
 function GetClosestFriendlyZone(initialpoint, friendlyzones)
-    local initialpoint = initialpoint
-    local friendlyzones = Friendlyzones
     local distance = nil
     local alldistances = {}
+    local closezones = {}
 
     for _, zone in ipairs(friendlyzones) do
         local friendlyzonecoordinate = zone:GetCoordinate()
@@ -51,14 +65,10 @@ function GetClosestFriendlyZone(initialpoint, friendlyzones)
         local converteddistance = CalculateMetersToNM(distance)
         if converteddistance < 50 then
             table.insert(alldistances, distance)
+            table.insert(closezones, zone)
         end
+        return closezones
     end
-
-    table.sort(alldistances)
-
-    local closestdistance = alldistances[1]
-    return closestdistance
-    
 end
 
 --[[                                                     
@@ -86,7 +96,7 @@ if Reneopszone == nil then
 end
 Reneopszone:Start()
 
--- Draw Rene zone on map (Not needed taken care of by OPSZONE)
+-- Draw Rene zone on map
 
 -- trigger.action.circleToAll(-1, 1, rene:GetPointVec3(), 4600, {1, 0, 0, 1}, {1, 0, 0, 0.3}, 1, true, "Rene")
 -- trigger.action.textToAll(-1, 2, rene:GetPointVec3(), {1, 0, 0, 1}, {1, 0, 0, 0.3}, 27, true, "Rene")
@@ -121,31 +131,55 @@ local rene_tankt90 = SPAWN:NewWithAlias("tank_templatet90", "Rene T-90")
   end
 
 
+
+-- Rene OnCaptured logic
 function Reneopszone:OnAfterCaptured(From, Event, To, Coalition)
   if Coalition == coalition.side.BLUE then
       Ctld:AddCTLDZone("rene", CTLD.CargoZoneType.UNLOAD, nil, true, false)
-
-      GetFriendlyZones(Opszones)
-
-        local renebluecatimer = TIMER:New( function()
-        end)
-
-        renebluecatimer:Start(1, nil, math.random(1400, 2600))
-
-      end
   if Coalition == coalition.side.RED then
       Ctld:DeactivateZone("Rene", CTLD.CargoZoneType.UNLOAD)
       
+      
+      GetFriendlyZones(Opszones)
+
+        local renebluecatimer = TIMER:New( function()
+          local friendlyzones = GetFriendlyZones(Opszones)
+          local closezones = GetClosestFriendlyZone(Rene, friendlyzones)
+
+          if #closezones > 0 then
+              local randomindex = math.random(1, #closezones)
+              local selectedzone = closezones[randomindex]
+              local variablename = selectedzone:GetName() .. "_spawn_zones"
+              local getvariable = _G[variablename]
+              BASE:Trace("Selected friendly zone: " .. selectedzone:GetName())
+
+              local rene_ca_unit = SPAWN:NewWithAlias("blue_ca_unit", "Rene Counter Attack Unit")
+                :InitRandomizeZones(getvariable)
+                :OnSpawnGroup(
+                  function( spawned_group )
+                    local capture_task = AUFTRAG:NewCAPTUREZONE(Reneopszone, coalition.side.BLUE, 10, nil, ENUMS.Formation.Vehicle.OnRoad)
+                    local opsgrp = ARMYGROUP:New( spawned_group )
+                    if opsgrp == nil then
+                      BASE:Trace("Opsgrp is nil!")
+                      return end
+                    opsgrp:AddMission( capture_task )
+                  end)
+                :InitValidateAndRepositionGroundUnits(true)
+                
+                rene_ca_unit:Spawn()
+
+              
+          else
+              BASE:Trace("No friendly zones within 50 NM of Rene.")
+          end
+        end)
+
+        -- renebluecatimer:Start(1, nil, math.random(1400, 2600))
+        renebluecatimer:Start(1, nil, 1)
+
+      end
       end
   end
-
-
--- Set up the zone so it can be captured (Not needed taken care of by OPSZONE)
-
--- local rene_capture_zone = ZONE_CAPTURE_COALITION:New(rene, coalition.side.RED)
-   -- :SetMarkZone(false)
-
--- rene_capture_zone:Start(10, 30)
 
 -- For testing send units to attack Rene (Not needed here gonna be moved to ai.lua)
 
@@ -154,7 +188,7 @@ function Reneopszone:OnAfterCaptured(From, Event, To, Coalition)
 local rene_attack_unit = SPAWN:NewWithAlias("Ground-1", "Rene Attack Infantry")
   :OnSpawnGroup(
     function( spawned_group )
-      local attack_task = AUFTRAG:NewCAPTUREZONE(Reneopszone, coalition.side.BLUE, 10)
+      local attack_task = AUFTRAG:NewCAPTUREZONE(Reneopszone, coalition.side.BLUE, 10, nil, ENUMS.Formation.Vehicle.OnRoad)
       local opsgrp = ARMYGROUP:New( spawned_group )
       if opsgrp == nil then
         BASE:Trace("Opsgrp is nil!")
@@ -167,9 +201,6 @@ local rene_attack_unit = SPAWN:NewWithAlias("Ground-1", "Rene Attack Infantry")
   :InitValidateAndRepositionGroundUnits(true)
 
 rene_attack_unit:SpawnFromPointVec3(ZONE:FindByName("rene_attack_spawn"):GetPointVec3())
-  -- :RouteToVec3(rene:GetPointVec3())
-  -- :SetSpeed(20)
-  -- :AddMission(AUFTRAG:NewGROUNDATTACK(GROUP:FindByName("Rene Infantry#001"), 20, ENUMS.Formation.Vehicle.OnRoad))
 
 
 --[[                                                        
