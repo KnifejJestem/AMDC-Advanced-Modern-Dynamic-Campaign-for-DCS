@@ -20,8 +20,9 @@ Capture_b_infantry = GROUP:FindByName("capture_b_infantry")
 Capture_r_tank = GROUP:FindByName("capture_r_tank")
 Capture_r_infantry = GROUP:FindByName("capture_r_infantry")
 
-Opszones = { Reneopszone, Beirutopszone, Basselopszone, Hatayopszone }
+Opszones = {}
 Friendlyzones = {}
+Enemyzones = {}
 
 -------------------------------------------------
 -- Zones.lua functions
@@ -45,6 +46,22 @@ function GetFriendlyZones(zones)
     return friendlyzones
 end
 
+function GetEnemyZones(zones)
+    local enemyzones = {}
+    for _, Opszones in ipairs(zones) do
+        if Opszones:GetOwner() == coalition.side.RED then
+            table.insert(enemyzones, Opszones)
+            table.insert(Enemyzones, Opszones)
+        end
+    end
+    env.info("Enemy zones found: " .. #enemyzones)
+    for i, zone in ipairs(enemyzones) do
+        -- Assuming the Opszone object has a GetName() method
+        env.info("Enemy Zone Name #" .. i .. ": " .. zone:GetName())
+    end
+    return enemyzones
+end
+
 
 -- Convert meters to nautical miles
 function CalculateMetersToNM(meters)
@@ -63,12 +80,31 @@ function GetClosestFriendlyZone(initialpoint, friendlyzones)
         local friendlyzonecoordinate = zone:GetCoordinate()
         local distance = initialpoint:Get2DDistance(friendlyzonecoordinate)
         local converteddistance = CalculateMetersToNM(distance)
-        if converteddistance < 50 then
+        if converteddistance < 80 and converteddistance > 1 then
             table.insert(alldistances, distance)
             table.insert(closezones, zone)
+            env.info("Friendly zone within 80 NM: " .. zone:GetName())
         end
-        return closezones
     end
+    return closezones
+end
+
+function GetClosestEnemyZone(initialpoint, enemyzones)
+    local distance = nil
+    local alldistances = {}
+    local closezones = {}
+
+    for _, zone in ipairs(enemyzones) do
+        local enemyzonecoordinate = zone:GetCoordinate()
+        local distance = initialpoint:Get2DDistance(enemyzonecoordinate)
+        local converteddistance = CalculateMetersToNM(distance)
+        if converteddistance < 80 and converteddistance > 1 then
+            table.insert(alldistances, distance)
+            table.insert(closezones, zone)
+            env.info("Enemy zone within 80 NM: " .. zone:GetName())
+        end
+    end
+    return closezones
 end
 
 --[[                                                     
@@ -90,6 +126,7 @@ local rene_spawn_zones = {
   ZONE:FindByName("rene_spawn-6")
 }
 Rene = ZONE:FindByName("rene")
+local renespawnca = ZONE:FindByName("rene_spawn_ca")
 Reneopszone = OPSZONE:New(ZONE:FindByName("rene"), coalition.side.RED)
 if Reneopszone == nil then
   BASE:Trace("Rene Opsgrp is nil!")
@@ -136,10 +173,39 @@ local rene_tankt90 = SPAWN:NewWithAlias("tank_templatet90", "Rene T-90")
 function Reneopszone:OnAfterCaptured(From, Event, To, Coalition)
   if Coalition == coalition.side.BLUE then
       Ctld:AddCTLDZone("rene", CTLD.CargoZoneType.UNLOAD, nil, true, false)
+      Ctld:ActivateZone("rene", CTLD.CargoZoneType.UNLOAD)
+      GetEnemyZones(Opszones)
+      local reneredcatimer = TIMER:New( function()
+          local enemyzones = GetEnemyZones(Opszones)
+          local closezones = GetClosestEnemyZone(Rene, enemyzones)
+
+          if #closezones > 0 then
+              local randomindex = math.random(1, #closezones)
+              local selectedzone = closezones[randomindex]
+              local variablename = selectedzone:GetName() .. "_spawn_ca"
+              env.info(variablename)
+              env.info(selectedzone:GetName())
+              local getvariable = _G[variablename]
+
+              local rene_ca_unit = SPAWN:NewWithAlias("red_ca_unit", "Rene Red Counter Attack Unit")
+                :OnSpawnGroup(
+                  function( spawned_group )
+                    local capture_task = AUFTRAG:NewCAPTUREZONE(Reneopszone, coalition.side.RED, 100, nil, ENUMS.Formation.Vehicle.OnRoad)
+                    local opsgrp = ARMYGROUP:New( spawned_group )
+                    if opsgrp == nil then
+                      return end
+                    opsgrp:AddMission( capture_task )
+                  end)
+                :InitValidateAndRepositionGroundUnits(true)
+
+                rene_ca_unit:SpawnFromPointVec3(ZONE:FindByName(variablename):GetPointVec3())
+          end
+        end)
+
+        reneredcatimer:Start(1, nil, math.random(1400, 2600))
+        -- reneredcatimer:Start(1, nil, 1)
   if Coalition == coalition.side.RED then
       Ctld:DeactivateZone("Rene", CTLD.CargoZoneType.UNLOAD)
-      
-      
       GetFriendlyZones(Opszones)
 
         local renebluecatimer = TIMER:New( function()
@@ -149,33 +215,29 @@ function Reneopszone:OnAfterCaptured(From, Event, To, Coalition)
           if #closezones > 0 then
               local randomindex = math.random(1, #closezones)
               local selectedzone = closezones[randomindex]
-              local variablename = selectedzone:GetName() .. "_spawn_zones"
+              local variablename = selectedzone:GetName() .. "_spawn_ca"
               local getvariable = _G[variablename]
-              BASE:Trace("Selected friendly zone: " .. selectedzone:GetName())
-
-              local rene_ca_unit = SPAWN:NewWithAlias("blue_ca_unit", "Rene Counter Attack Unit")
-                :InitRandomizeZones(getvariable)
+              local rene_ca_unit = SPAWN:NewWithAlias("blue_ca_unit", "Rene Blue Counter Attack Unit")
                 :OnSpawnGroup(
                   function( spawned_group )
-                    local capture_task = AUFTRAG:NewCAPTUREZONE(Reneopszone, coalition.side.BLUE, 10, nil, ENUMS.Formation.Vehicle.OnRoad)
+                    local capture_task = AUFTRAG:NewCAPTUREZONE(Reneopszone, coalition.side.BLUE, 100, nil, ENUMS.Formation.Vehicle.OnRoad)
                     local opsgrp = ARMYGROUP:New( spawned_group )
                     if opsgrp == nil then
-                      BASE:Trace("Opsgrp is nil!")
                       return end
                     opsgrp:AddMission( capture_task )
                   end)
                 :InitValidateAndRepositionGroundUnits(true)
-                
-                rene_ca_unit:Spawn()
+
+                rene_ca_unit:SpawnFromPointVec3(ZONE:FindByName(variablename):GetPointVec3())
 
               
           else
-              BASE:Trace("No friendly zones within 50 NM of Rene.")
+              BASE:Trace("No friendly zones within 80 NM of Rene.")
           end
         end)
 
-        -- renebluecatimer:Start(1, nil, math.random(1400, 2600))
-        renebluecatimer:Start(1, nil, 1)
+        renebluecatimer:Start(1, nil, math.random(1400, 2600))
+        -- renebluecatimer:Start(1, nil, 1)
 
       end
       end
@@ -185,22 +247,22 @@ function Reneopszone:OnAfterCaptured(From, Event, To, Coalition)
 
 
 
-local rene_attack_unit = SPAWN:NewWithAlias("Ground-1", "Rene Attack Infantry")
-  :OnSpawnGroup(
-    function( spawned_group )
-      local attack_task = AUFTRAG:NewCAPTUREZONE(Reneopszone, coalition.side.BLUE, 10, nil, ENUMS.Formation.Vehicle.OnRoad)
-      local opsgrp = ARMYGROUP:New( spawned_group )
-      if opsgrp == nil then
-        BASE:Trace("Opsgrp is nil!")
-        return
-      end
-      opsgrp:AddMission( attack_task )
-    end
-  )
-  :InitCleanUp(300)
-  :InitValidateAndRepositionGroundUnits(true)
+-- local rene_attack_unit = SPAWN:NewWithAlias("Ground-1", "Rene Attack Infantry")
+--   :OnSpawnGroup(
+--     function( spawned_group )
+--       local attack_task = AUFTRAG:NewCAPTUREZONE(Reneopszone, coalition.side.BLUE, 100, nil, ENUMS.Formation.Vehicle.OnRoad)
+--       local opsgrp = ARMYGROUP:New( spawned_group )
+--       if opsgrp == nil then
+--         BASE:Trace("Opsgrp is nil!")
+--         return
+--       end
+--       opsgrp:AddMission( attack_task )
+--     end
+--   )
+--   :InitCleanUp(300)
+--   :InitValidateAndRepositionGroundUnits(true)
 
-rene_attack_unit:SpawnFromPointVec3(ZONE:FindByName("rene_attack_spawn"):GetPointVec3())
+-- rene_attack_unit:SpawnFromPointVec3(ZONE:FindByName("rene_attack_spawn"):GetPointVec3())
 
 
 --[[                                                        
@@ -230,6 +292,8 @@ local beirut_spawn_zones = {
   ZONE:FindByName("beirut_spawn-14"),
   ZONE:FindByName("beirut_spawn-15")
 }
+
+local beirutspawnca = ZONE:FindByName("beirut_spawn_ca")
 
 Beirut = ZONE:FindByName("beirut")
 Beirutopszone = OPSZONE:New(ZONE:FindByName("beirut"), coalition.side.RED)
@@ -261,6 +325,80 @@ local beirut_tankt90 = SPAWN:NewWithAlias("tank_templatet90", "Beirut T-90")
   for i = 1, math.random(3, 5) do
     beirut_tankt90:Spawn()
   end
+
+  function Beirutopszone:OnAfterCaptured(From, Event, To, Coalition)
+  if Coalition == coalition.side.BLUE then
+      Ctld:AddCTLDZone("rene", CTLD.CargoZoneType.UNLOAD, nil, true, false)
+      Ctld:ActivateZone("rene", CTLD.CargoZoneType.UNLOAD)
+      GetEnemyZones(Opszones)
+      local beirutredcatimer = TIMER:New( function()
+          local enemyzones = GetEnemyZones(Opszones)
+          local closezones = GetClosestEnemyZone(Beirut, enemyzones)
+
+          if #closezones > 0 then
+              local randomindex = math.random(1, #closezones)
+              local selectedzone = closezones[randomindex]
+              local variablename = selectedzone:GetName() .. "_spawn_ca"
+              env.info(variablename)
+              env.info(selectedzone:GetName())
+              local getvariable = _G[variablename]
+
+              local rene_ca_unit = SPAWN:NewWithAlias("red_ca_unit", "Rene Red Counter Attack Unit")
+                :OnSpawnGroup(
+                  function( spawned_group )
+                    local capture_task = AUFTRAG:NewCAPTUREZONE(Beirutopszone, coalition.side.RED, 100, nil, ENUMS.Formation.Vehicle.OnRoad)
+                    local opsgrp = ARMYGROUP:New( spawned_group )
+                    if opsgrp == nil then
+                      return end
+                    opsgrp:AddMission( capture_task )
+                  end)
+                :InitValidateAndRepositionGroundUnits(true)
+
+                rene_ca_unit:SpawnFromPointVec3(ZONE:FindByName(variablename):GetPointVec3())
+          end
+        end)
+
+        beirutredcatimer:Start(1, nil, math.random(1400, 2600))
+        -- beirutredcatimer:Start(1, nil, 1)
+  if Coalition == coalition.side.RED then
+      Ctld:DeactivateZone("Rene", CTLD.CargoZoneType.UNLOAD)
+      GetFriendlyZones(Opszones)
+
+        local beirutbluecatimer = TIMER:New( function()
+          local friendlyzones = GetFriendlyZones(Opszones)
+          local closezones = GetClosestFriendlyZone(Beirut, friendlyzones)
+
+          if #closezones > 0 then
+              local randomindex = math.random(1, #closezones)
+              local selectedzone = closezones[randomindex]
+              local variablename = selectedzone:GetName() .. "_spawn_ca"
+              local getvariable = _G[variablename]
+              local beirut_ca_unit = SPAWN:NewWithAlias("blue_ca_unit", "Beirut Blue Counter Attack Unit")
+                :OnSpawnGroup(
+                  function( spawned_group )
+                    local capture_task = AUFTRAG:NewCAPTUREZONE(Beirutopszone, coalition.side.BLUE, 100, nil, ENUMS.Formation.Vehicle.OnRoad)
+                    local opsgrp = ARMYGROUP:New( spawned_group )
+                    if opsgrp == nil then
+                      return end
+                    opsgrp:AddMission( capture_task )
+                  end)
+                :InitValidateAndRepositionGroundUnits(true)
+
+                beirut_ca_unit:SpawnFromPointVec3(ZONE:FindByName(variablename):GetPointVec3())
+
+              
+          else
+              BASE:Trace("No friendly zones within 80 NM of Rene.")
+          end
+        end)
+
+        beirutbluecatimer:Start(1, nil, math.random(1400, 2600))
+        -- beirutbluecatimer:Start(1, nil, 1)
+
+      end
+      end
+  end
+
 --[[                                                    
                                                           
 ██  ██  ▄▄▄ ▄▄▄▄▄▄ ▄▄▄  ▄▄ ▄▄   ██████  ▄▄▄  ▄▄  ▄▄ ▄▄▄▄▄ 
@@ -276,6 +414,8 @@ local hatay_spawn_zones = {
   ZONE:FindByName("hatay_spawn-2"),
   ZONE:FindByName("hatay_spawn-3")
 }
+
+local hatayspawnca = ZONE:FindByName("hatay_spawn_ca")
 
 Hatay = ZONE:FindByName("hatay")
 Hatayopszone = OPSZONE:New(ZONE:FindByName("hatay"), coalition.side.RED)
@@ -310,6 +450,78 @@ local hatay_tankt90 = SPAWN:NewWithAlias("tank_templatet90", "Hatay T-90")
     hatay_tankt90:Spawn()
   end
 
+-- Hatay OnCaptured logic
+function Hatayopszone:OnAfterCaptured(From, Event, To, Coalition)
+  if Coalition == coalition.side.BLUE then
+      Ctld:AddCTLDZone("hatay", CTLD.CargoZoneType.UNLOAD, nil, true, false)
+      Ctld:ActivateZone("hatay", CTLD.CargoZoneType.UNLOAD)
+      GetEnemyZones(Opszones)
+      local hatayredcatimer = TIMER:New( function()
+          local enemyzones = GetEnemyZones(Opszones)
+          local closezones = GetClosestEnemyZone(Hatay, enemyzones)
+
+          if #closezones > 0 then
+              local randomindex = math.random(1, #closezones)
+              local selectedzone = closezones[randomindex]
+              local variablename = selectedzone:GetName() .. "_spawn_ca"
+              env.info(variablename)
+              env.info(selectedzone:GetName())
+              local getvariable = _G[variablename]
+
+              local hatay_ca_unit = SPAWN:NewWithAlias("red_ca_unit", "Hatay Red Counter Attack Unit")
+                :OnSpawnGroup(
+                  function( spawned_group )
+                    local capture_task = AUFTRAG:NewCAPTUREZONE(Hatayopszone, coalition.side.RED, 100, nil, ENUMS.Formation.Vehicle.OnRoad)
+                    local opsgrp = ARMYGROUP:New( spawned_group )
+                    if opsgrp == nil then
+                      return end
+                    opsgrp:AddMission( capture_task )
+                  end)
+                :InitValidateAndRepositionGroundUnits(true)
+
+                hatay_ca_unit:SpawnFromPointVec3(ZONE:FindByName(variablename):GetPointVec3())
+          end
+        end)
+
+        hatayredcatimer:Start(1, nil, math.random(1400, 2600))
+  end
+  if Coalition == coalition.side.RED then
+      Ctld:DeactivateZone("hatay", CTLD.CargoZoneType.UNLOAD)
+      GetFriendlyZones(Opszones)
+
+        local hataybluecatimer = TIMER:New( function()
+          local friendlyzones = GetFriendlyZones(Opszones)
+          local closezones = GetClosestFriendlyZone(Hatay, friendlyzones)
+
+          if #closezones > 0 then
+              local randomindex = math.random(1, #closezones)
+              local selectedzone = closezones[randomindex]
+              local variablename = selectedzone:GetName() .. "_spawn_ca"
+              local getvariable = _G[variablename]
+              local hatay_ca_unit = SPAWN:NewWithAlias("blue_ca_unit", "Hatay Blue Counter Attack Unit")
+                :OnSpawnGroup(
+                  function( spawned_group )
+                    local capture_task = AUFTRAG:NewCAPTUREZONE(Hatayopszone, coalition.side.BLUE, 100, nil, ENUMS.Formation.Vehicle.OnRoad)
+                    local opsgrp = ARMYGROUP:New( spawned_group )
+                    if opsgrp == nil then
+                      return end
+                    opsgrp:AddMission( capture_task )
+                  end)
+                :InitValidateAndRepositionGroundUnits(true)
+
+                hatay_ca_unit:SpawnFromPointVec3(ZONE:FindByName(variablename):GetPointVec3())
+
+              
+          else
+              BASE:Trace("No friendly zones within 80 NM of Hatay.")
+          end
+        end)
+
+        hataybluecatimer:Start(1, nil, math.random(1400, 2600))
+
+      end
+      end
+
 --[[                                                             
                                                                  
 █████▄  ▄▄▄   ▄▄▄▄  ▄▄▄▄ ▄▄▄▄▄ ▄▄      ██████  ▄▄▄  ▄▄  ▄▄ ▄▄▄▄▄ 
@@ -330,6 +542,8 @@ local bassel_spawn_zones = {
   ZONE:FindByName("bassel_spawn-7"),
   ZONE:FindByName("bassel_spawn-8")
 }
+
+local basselcaspawn = ZONE:FindByName("bassel_ca_spawn")
 
 Bassel = ZONE:FindByName("bassel")
 Basselopszone = OPSZONE:New(ZONE:FindByName("bassel"), coalition.side.RED)
@@ -364,3 +578,70 @@ local bassel_tankt90 = SPAWN:NewWithAlias("tank_templatet90", "Bassel T-90")
     bassel_tankt90:Spawn()
   end
 
+-- Bassel OnCaptured logic
+function Basselopszone:OnAfterCaptured(From, Event, To, Coalition)
+  if Coalition == coalition.side.BLUE then
+      Ctld:AddCTLDZone("bassel", CTLD.CargoZoneType.UNLOAD, nil, true, false)
+      Ctld:ActivateZone("bassel", CTLD.CargoZoneType.UNLOAD)
+      GetEnemyZones(Opszones)
+      local basselredcatimer = TIMER:New( function()
+          local enemyzones = GetEnemyZones(Opszones)
+          local closezones = GetClosestEnemyZone(Bassel, enemyzones)
+
+          if #closezones > 0 then
+              local randomindex = math.random(1, #closezones)
+              local selectedzone = closezones[randomindex]
+              local variablename = selectedzone:GetName() .. "_spawn_ca"
+              env.info(variablename)
+              env.info(selectedzone:GetName())
+              local getvariable = _G[variablename]
+
+              local bassel_ca_unit = SPAWN:NewWithAlias("red_ca_unit", "Bassel Red Counter Attack Unit")
+                :OnSpawnGroup(
+                  function( spawned_group )
+                    local capture_task = AUFTRAG:NewCAPTUREZONE(Basselopszone, coalition.side.RED, 100, nil, ENUMS.Formation.Vehicle.OnRoad)
+                    local opsgrp = ARMYGROUP:New( spawned_group )
+                    if opsgrp == nil then
+                      return end
+                    opsgrp:AddMission( capture_task )
+                  end)
+                :InitValidateAndRepositionGroundUnits(true)
+
+                bassel_ca_unit:SpawnFromPointVec3(ZONE:FindByName(variablename):GetPointVec3())
+          end
+        end)
+
+        basselredcatimer:Start(1, nil, math.random(1400, 2600))
+  end
+  if Coalition == coalition.side.RED then
+      Ctld:DeactivateZone("bassel", CTLD.CargoZoneType.UNLOAD)
+      GetFriendlyZones(Opszones)
+
+        local basselbluecatimer = TIMER:New( function()
+          local friendlyzones = GetFriendlyZones(Opszones)
+          local closezones = GetClosestFriendlyZone(Bassel, friendlyzones)
+
+          if #closezones > 0 then
+              local randomindex = math.random(1, #closezones)
+              local selectedzone = closezones[randomindex]
+              local variablename = selectedzone:GetName() .. "_spawn_ca"
+              local getvariable = _G[variablename]
+              local bassel_ca_unit = SPAWN:NewWithAlias("blue_ca_unit", "Bassel Blue Counter Attack Unit")
+                :OnSpawnGroup(
+                  function( spawned_group )
+                    local capture_task = AUFTRAG:NewCAPTUREZONE(Basselopszone, coalition.side.BLUE, 100, nil, ENUMS.Formation.Vehicle.OnRoad)
+                    local opsgrp = ARMYGROUP:New( spawned_group )
+                    if opsgrp == nil then
+                      return end
+                    opsgrp:AddMission( capture_task )
+                  end)
+                :InitValidateAndRepositionGroundUnits(true)
+
+                bassel_ca_unit:SpawnFromPointVec3(ZONE:FindByName(variablename):GetPointVec3())
+          end
+        end)
+        basselbluecatimer:Start(1, nil, math.random(1400, 2600))
+      end
+      end
+
+Opszones = { Reneopszone, Beirutopszone, Basselopszone, Hatayopszone }
