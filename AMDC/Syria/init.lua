@@ -25,4 +25,4 @@ local chief = [[C:\Users\knife\Desktop\AMDC for DCS\AMDC-for-DCS\AMDC\Syria\chie
 assert(loadfile(zones))()
 -- assert(loadfile(cargo))()
 assert(loadfile(redair))()
-assert(loadfile(chief))()
+-- assert(loadfile(chief))()
