@@ -458,25 +458,6 @@ Latakia = ZONE:FindByName("latakia")
 Latakiaopszone = OPSZONE:New(ZONE:FindByName("latakia"), coalition.side.RED)
 Latakiaopszone:Start()
 
-  local function SpawnLatakiaGroup(template, alias, min, max)
-    local spawner = SPAWN:NewWithAlias(template, alias)
-        :InitRandomizeZones(latakia_spawn_zones)
-        :InitCleanUp(300)
-        :InitValidateAndRepositionGroundUnits(true)
-    
-    local count = math.random(min, max)
-    for i = 1, count do
-        spawner:Spawn()
-    end
-end
-
--- 4. Execute all spawns using the function
-SpawnLatakiaGroup("infantry_template", "Latakia Infantry", Inf_zone_min, Inf_zone_max)
-SpawnLatakiaGroup("manpad_template",   "Latakia Manpads",  Mnpds_zone_min, Mnpds_zone_max)
-SpawnLatakiaGroup("tank_templatet72",  "Latakia T-72",     T72_zone_min, T72_zone_max)
-SpawnLatakiaGroup("tank_templatet90",  "Latakia T-90",     T90_zone_min, T90_zone_max)
-SpawnLatakiaGroup("rpg_template",      "Latakia RPG",      Rpg_zone_min, Rpg_zone_max)
-
 --[[                                                   
                                                        
 ▄█████  ▄▄▄  ▄▄   ▄▄   ██████  ▄▄▄  ▄▄  ▄▄ ▄▄▄▄▄  ▄▄▄▄ 
