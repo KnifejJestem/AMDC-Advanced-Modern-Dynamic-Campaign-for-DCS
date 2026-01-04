@@ -8,7 +8,7 @@
 
 _SETTINGS:SetPlayerMenuOff()
 
-Ctld = CTLD:New(coalition.side.BLUE,{"Helicargo","CH.47", "CH%-47"}, "Helicargo Transport")
+Ctld = CTLD:New(coalition.side.BLUE,{"Cargo","CH.47", "CH%-47","C130", "C.130J", "C%-130J"}, "Cargo Transport")
 Ctld.useprefix = true
 Ctld.dropcratesanywhere = true
 Ctld.forcehoverload = false -- Chinook must-have option

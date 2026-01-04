@@ -4,6 +4,7 @@
         //"C:\\Users\\knife\\Desktop\\LUA-addons\\Moose_Include-2.9.14",
         "LUA_Libraries"
     ],
+    "Lua.workspace.preloadFileSize": 13000,
     "Lua.diagnostics.globals": [
         "trigger",
         "mist",
